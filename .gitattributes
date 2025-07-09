@@ -1,0 +1,2 @@
+# the dataset is committed with CRLF; stop git rewriting line endings on it
+*.csv -text
