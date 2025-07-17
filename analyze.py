@@ -49,3 +49,88 @@ def load(path):
     empty = [c for c in df.columns if df[c].isna().all()]
     return df.drop(columns=empty), empty
 
+
+def _parses_as_date(s):
+    """True if >=90% of a sample of non-null values parse as dates."""
+    sample = s.dropna().astype(str).head(500)
+    if sample.empty:
+        return False
+    parsed = pd.to_datetime(sample, errors="coerce", format="mixed", dayfirst=False)
+    return parsed.notna().mean() >= 0.9
+
+
+def detect(df, ov=None):
+    """Infer a role for each column. `ov` holds CLI overrides that win outright."""
+    ov = {k: v for k, v in (ov or {}).items() if v}
+    n = len(df)
+    roles = {"date": None, "value": None, "qty": None, "id": None, "status": None,
+             "dims": [], "geo_dims": []}
+    taken = set(ov.get("exclude", []))
+
+    def hint(col, key):
+        return re.search(NAME_HINTS[key], col, re.I) is not None
+
+    # date: prefer a date-looking name that actually parses, else anything that parses
+    if "date" in ov:
+        roles["date"] = ov["date"]
+    else:
+        cands = [c for c in df.columns if c not in taken and _parses_as_date(df[c])]
+        named = [c for c in cands if hint(c, "date")]
+        roles["date"] = (named or cands or [None])[0]
+
+    numeric = [c for c in df.columns
+               if c not in taken and pd.api.types.is_numeric_dtype(df[c])
+               and not pd.api.types.is_bool_dtype(df[c])]
+
+    # value: a money-ish name first, else the numeric column with the widest spread
+    if "value" in ov:
+        roles["value"] = ov["value"]
+    else:
+        named = [c for c in numeric if hint(c, "value")]
+        roles["value"] = named[0] if named else (
+            max(numeric, key=lambda c: df[c].std(skipna=True) or 0, default=None))
+
+    # qty: small integers with a quantity-ish name
+    if "qty" in ov:
+        roles["qty"] = ov["qty"]
+    else:
+        for c in numeric:
+            if c != roles["value"] and hint(c, "qty") and df[c].nunique() <= 50:
+                roles["qty"] = c
+                break
+
+    # id: near-unique values, identifier-ish name
+    if "id" in ov:
+        roles["id"] = ov["id"]
+    else:
+        for c in df.columns:
+            if c in taken or c in (roles["date"], roles["value"], roles["qty"]):
+                continue
+            if df[c].nunique() / n > ID_CARDINALITY_RATIO and hint(c, "id"):
+                roles["id"] = c
+                break
+
+    used = {roles[k] for k in ("date", "value", "qty", "id")} | taken
+
+    # dimensions: everything categorical that is left, split by cardinality
+    for c in df.columns:
+        if c in used or pd.api.types.is_numeric_dtype(df[c]) and not pd.api.types.is_bool_dtype(df[c]):
+            continue
+        k = df[c].nunique(dropna=True)
+        if k < 2:
+            continue                                    # single value tells us nothing
+        if k <= MAX_DIM_CARDINALITY:
+            roles["dims"].append(c)
+        elif k / n < ID_CARDINALITY_RATIO:   # anything near-unique is an id, not a dimension
+            roles["geo_dims"].append(c)
+
+    # status: the dimension whose values look like order outcomes
+    if "status" in ov:
+        roles["status"] = ov["status"]
+    else:
+        for c in roles["dims"]:
+            vals = " ".join(df[c].dropna().astype(str).unique()[:40]).lower()
+            if re.search(STATUS_VALUE_HINT, vals):
+                roles["status"] = c
+                break
+    return roles
