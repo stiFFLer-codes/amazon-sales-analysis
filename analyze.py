@@ -134,3 +134,30 @@ def detect(df, ov=None):
                 roles["status"] = c
                 break
     return roles
+
+
+def clean(df, roles):
+    """Parse dates, normalise messy text keys, coerce the value column. Logs what it did."""
+    log = []
+    if roles["date"]:
+        before = df[roles["date"]].notna().sum()
+        df[roles["date"]] = pd.to_datetime(df[roles["date"]], errors="coerce",
+                                           format="mixed", dayfirst=False)
+        bad = before - df[roles["date"]].notna().sum()
+        log.append(f"Parsed <b>{roles['date']}</b> as dates" + (f" ({bad:,} unparseable)" if bad else ""))
+
+    for c in roles["geo_dims"] + roles["dims"]:
+        if pd.api.types.is_object_dtype(df[c]) or isinstance(df[c].dtype, pd.StringDtype):
+            before = df[c].nunique()
+            df[c] = df[c].astype(str).str.strip().str.upper().replace({"NAN": None})
+            after = df[c].nunique()
+            if after < before:
+                log.append(f"Normalised case/whitespace in <b>{c}</b>: {before} → {after} distinct values")
+
+    if roles["value"]:
+        df[roles["value"]] = pd.to_numeric(df[roles["value"]], errors="coerce")
+        nulls = df[roles["value"]].isna().sum()
+        if nulls:
+            log.append(f"<b>{roles['value']}</b> is missing on {nulls:,} rows "
+                       f"({nulls / len(df):.1%}) — excluded from value totals")
+    return df, log
