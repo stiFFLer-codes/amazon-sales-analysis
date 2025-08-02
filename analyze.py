@@ -161,3 +161,40 @@ def clean(df, roles):
             log.append(f"<b>{roles['value']}</b> is missing on {nulls:,} rows "
                        f"({nulls / len(df):.1%}) — excluded from value totals")
     return df, log
+
+
+# ---------------------------------------------------------------- presentation
+
+def fig_to_img(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
+    plt.close(fig)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    return f'<img src="data:image/png;base64,{b64}">'
+
+
+def plot(series, title, kind="bar", ylabel=""):
+    """One styling path for every chart in the report."""
+    fig, ax = plt.subplots(figsize=(9, 4))
+    extra = {"marker": "o", "markersize": 3, "linewidth": 1.6} if kind == "line" else {}
+    series.plot(kind=kind, ax=ax, color="#4c72b0", legend=False, **extra)
+    ax.set_title(title, fontsize=12, weight="bold", loc="left")
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel("")
+    ax.grid(axis="y", alpha=0.3)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.yaxis.set_major_formatter(lambda v, _: f"{v:,.0f}")
+    if kind == "bar":
+        ax.tick_params(axis="x", labelrotation=45)
+        for label in ax.get_xticklabels():
+            label.set_ha("right")
+    return fig_to_img(fig)
+
+
+def table(df, index=True):
+    return df.to_html(index=index, border=0, float_format=lambda v: f"{v:,.2f}",
+                      classes="tbl", na_rep="—")
+
+
+def kpi(label, value):
+    return f'<div class="kpi"><span>{html.escape(label)}</span><strong>{value}</strong></div>'
