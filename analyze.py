@@ -227,3 +227,24 @@ def s_overview(df, roles):
                       kpi(f"Realised {v}", f"{df[v].sum() - lost:,.0f}")]
     return f'<div class="kpis">{"".join(tiles)}</div>'
 
+
+def s_quality(df, roles, log, dropped):
+    parts = []
+    if dropped:
+        parts.append(f"<p>Dropped {len(dropped)} entirely empty column(s): "
+                     f"<b>{html.escape(', '.join(dropped))}</b></p>")
+    if log:
+        parts.append("<ul>" + "".join(f"<li>{x}</li>" for x in log) + "</ul>")
+    if roles["id"]:
+        dup = df[roles["id"]].duplicated().sum()
+        parts.append(f"<p><b>{roles['id']}</b> repeats on {dup:,} rows — "
+                     f"{len(df):,} line items across {df[roles['id']].nunique():,} orders."
+                     f" Order-level figures are de-duplicated.</p>")
+    miss = df.isna().sum()
+    miss = miss[miss > 0].sort_values(ascending=False)
+    if not miss.empty:
+        m = miss.to_frame("Missing")
+        m["% of rows"] = (m["Missing"] / len(df) * 100).round(1)
+        parts.append(table(m))
+    return "".join(parts) or "<p class='note'>No data quality issues found.</p>"
+
