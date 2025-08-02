@@ -198,3 +198,32 @@ def table(df, index=True):
 
 def kpi(label, value):
     return f'<div class="kpi"><span>{html.escape(label)}</span><strong>{value}</strong></div>'
+
+
+# ---------------------------------------------------------------- sections
+# Each builder returns HTML, or a note when the data can't support it.
+
+def s_overview(df, roles):
+    v, d, q, i = roles["value"], roles["date"], roles["qty"], roles["id"]
+    tiles = [kpi("Rows", f"{len(df):,}"), kpi("Columns", f"{df.shape[1]}")]
+    if d and df[d].notna().any():
+        tiles.append(kpi("Date range", f"{df[d].min():%d %b %Y} → {df[d].max():%d %b %Y}"))
+    unit = "order" if i else "record"
+    orders = df[i].nunique() if i else len(df)
+    tiles.append(kpi(unit.capitalize() + "s", f"{orders:,}"))
+    if v:
+        total = df[v].sum()
+        tiles += [kpi(f"Total {v}", f"{total:,.0f}"),
+                  kpi(f"Avg {v} per {unit}", f"{total / orders:,.0f}")]
+    if q:
+        tiles.append(kpi(f"Total {q}", f"{df[q].sum():,.0f}"))
+    if roles["status"]:
+        bad = df[roles["status"]].astype(str).str.contains(CANCEL_HINT, case=False, na=False)
+        tiles.append(kpi("Failed outcome rate", f"{bad.mean():.1%}"))
+        if v:
+            # gross totals quietly include failed rows; show what actually stuck
+            lost = df.loc[bad, v].sum()
+            tiles += [kpi(f"{v} in failed rows", f"{lost:,.0f}"),
+                      kpi(f"Realised {v}", f"{df[v].sum() - lost:,.0f}")]
+    return f'<div class="kpis">{"".join(tiles)}</div>'
+
