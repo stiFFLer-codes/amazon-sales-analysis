@@ -248,3 +248,22 @@ def s_quality(df, roles, log, dropped):
         parts.append(table(m))
     return "".join(parts) or "<p class='note'>No data quality issues found.</p>"
 
+
+def s_trends(df, roles):
+    d, v = roles["date"], roles["value"]
+    if not d or df[d].notna().sum() < 2:
+        return "<p class='note'>No usable date column — trend analysis skipped.</p>"
+    t = df.dropna(subset=[d]).set_index(d)
+    metric = t[v] if v else t.iloc[:, 0].notna().astype(int)
+    label = v if v else "records"
+    out = [plot(metric.resample("D").sum(), f"Daily {label}", "line", label),
+           plot(metric.resample("D").size(), "Daily record count", "line", "records")]
+    monthly = metric.resample("MS").agg(["sum", "size", "mean"])
+    monthly.columns = [f"Total {label}", "Records", f"Avg {label}"]
+    monthly.index = monthly.index.strftime("%b %Y")
+    out.append(table(monthly))
+    dow = metric.groupby(t.index.dayofweek).sum()
+    dow.index = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][:len(dow)]
+    out.append(plot(dow, f"{label} by day of week", "bar", label))
+    return "".join(out)
+
