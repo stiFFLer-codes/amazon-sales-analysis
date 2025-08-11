@@ -267,3 +267,33 @@ def s_trends(df, roles):
     out.append(plot(dow, f"{label} by day of week", "bar", label))
     return "".join(out)
 
+
+def _breakdown(df, col, roles, top):
+    """value / share / average per category — the workhorse table."""
+    v, q, i = roles["value"], roles["qty"], roles["id"]
+    agg = {"Records": (col, "size")}
+    if i:
+        agg["Orders"] = (i, "nunique")
+    if v:
+        agg[f"Total {v}"] = (v, "sum")
+        agg[f"Avg {v}"] = (v, "mean")
+    if q:
+        agg[f"Total {q}"] = (q, "sum")
+    g = df.groupby(col, dropna=True).agg(**agg)
+    sort_col = f"Total {v}" if v else "Records"
+    g = g.sort_values(sort_col, ascending=False)
+    g["Share %"] = (g[sort_col] / g[sort_col].sum() * 100).round(1)
+    return g.head(top), sort_col
+
+
+def s_breakdowns(df, roles, top):
+    if not roles["dims"]:
+        return "<p class='note'>No low-cardinality categorical columns found.</p>"
+    out = []
+    for col in roles["dims"]:
+        g, sort_col = _breakdown(df, col, roles, top)
+        out.append(f"<h3>{html.escape(col)}</h3>")
+        out.append(plot(g[sort_col].head(10), f"{sort_col} by {col}", "bar", sort_col))
+        out.append(table(g))
+    return "".join(out)
+
