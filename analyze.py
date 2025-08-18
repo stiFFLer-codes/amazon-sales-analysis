@@ -297,3 +297,26 @@ def s_breakdowns(df, roles, top):
         out.append(table(g))
     return "".join(out)
 
+
+def s_outcomes(df, roles, top):
+    st = roles["status"]
+    if not st:
+        return "<p class='note'>No status-like column found — outcome analysis skipped.</p>"
+    df = df.copy()
+    df["_bad"] = df[st].astype(str).str.contains(CANCEL_HINT, case=False, na=False)
+    out = [f"<p>Rows whose <b>{html.escape(st)}</b> matches "
+           f"<code>{CANCEL_HINT}</code> count as a failed outcome "
+           f"(overall {df['_bad'].mean():.1%}).</p>",
+           table(df[st].value_counts().to_frame("Records").assign(
+               **{"Share %": lambda x: (x.Records / len(df) * 100).round(1)}))]
+    for col in [c for c in roles["dims"] if c != st] + roles["geo_dims"][:1]:
+        g = df.groupby(col).agg(Records=(col, "size"), Failed=("_bad", "sum"))
+        g["Failure %"] = (g.Failed / g.Records * 100).round(1)
+        g = g[g.Records >= max(30, len(df) * 0.001)].sort_values("Failure %", ascending=False)
+        if g.empty:
+            continue
+        out.append(f"<h3>Failure rate by {html.escape(col)}</h3>")
+        out.append(plot(g["Failure %"].head(10), f"Failure % by {col}", "bar", "%"))
+        out.append(table(g.head(top)))
+    return "".join(out)
+
