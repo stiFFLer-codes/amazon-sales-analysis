@@ -320,3 +320,61 @@ def s_outcomes(df, roles, top):
         out.append(table(g.head(top)))
     return "".join(out)
 
+
+def s_geography(df, roles, top):
+    if not roles["geo_dims"]:
+        return "<p class='note'>No high-cardinality location-like columns found.</p>"
+    out = []
+    for col in roles["geo_dims"]:
+        g, sort_col = _breakdown(df, col, roles, top)
+        full = df.groupby(col)[roles["value"]].sum() if roles["value"] else df[col].value_counts()
+        conc = full.sort_values(ascending=False)
+        share = conc.head(10).sum() / conc.sum() * 100
+        out.append(f"<h3>{html.escape(col)} — {conc.size:,} distinct</h3>")
+        out.append(f"<p>Top 10 account for <b>{share:.1f}%</b> of {sort_col.lower()}.</p>")
+        out.append(plot(g[sort_col], f"Top {top} {col} by {sort_col}", "bar", sort_col))
+        out.append(table(g))
+    return "".join(out)
+
+
+def s_segments(df, roles, top):
+    v, i = roles["value"], roles["id"]
+    if not v:
+        return "<p class='note'>No numeric value column — segmentation skipped.</p>"
+    order_val = df.groupby(i)[v].sum() if i else df[v].dropna()
+    order_val = order_val[order_val > 0]
+    if order_val.empty:
+        return "<p class='note'>No positive values to segment.</p>"
+
+    fig, ax = plt.subplots(figsize=(9, 4))
+    order_val.clip(upper=order_val.quantile(0.99)).plot(kind="hist", bins=50, ax=ax, color="#4c72b0")
+    ax.set_title("Order value distribution (99th pct clipped)", fontsize=12, weight="bold", loc="left")
+    ax.spines[["top", "right"]].set_visible(False)
+    out = [fig_to_img(fig),
+           table(order_val.describe().to_frame("Order value"))]
+
+    tiers = pd.qcut(order_val, [0, .5, .8, .95, 1],
+                    labels=["Budget (bottom 50%)", "Mid (50-80%)", "High (80-95%)", "Top (top 5%)"],
+                    duplicates="drop")
+    t = order_val.groupby(tiers, observed=True).agg(Orders="size", Value="sum")
+    t["Share of value %"] = (t.Value / t.Value.sum() * 100).round(1)
+    t["Avg order"] = (t.Value / t.Orders).round(0)
+    out += ["<h3>Value tiers</h3>", table(t)]
+
+    # tier composition across each dimension, e.g. which categories buyers of each tier pick
+    if i:
+        tier_map = tiers.reindex(df[i]).to_numpy()
+        for col in roles["dims"][:4]:
+            ct = pd.crosstab(df[col], tier_map, normalize="index") * 100
+            if ct.empty:
+                continue
+            out += [f"<h3>Tier mix within {html.escape(col)} (% of its orders)</h3>",
+                    table(ct.round(1).head(top))]
+    return "".join(out)
+
+
+def s_numerics(df):
+    num = df.select_dtypes("number")
+    if num.empty:
+        return "<p class='note'>No numeric columns.</p>"
+    return table(num.describe().T)
