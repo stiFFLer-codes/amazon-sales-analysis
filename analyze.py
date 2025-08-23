@@ -378,3 +378,85 @@ def s_numerics(df):
     if num.empty:
         return "<p class='note'>No numeric columns.</p>"
     return table(num.describe().T)
+
+
+# ---------------------------------------------------------------- report
+
+CSS = """
+body{font:15px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#f6f7f9;color:#1c2024}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:20px;margin:0 0 16px;padding-bottom:8px;border-bottom:2px solid #e4e6ea}
+h3{font-size:15px;margin:28px 0 10px;color:#4c5257}
+.sub{color:#6b7280;margin:0 0 28px}
+section{background:#fff;border:1px solid #e4e6ea;border-radius:10px;padding:22px 24px;margin-bottom:20px}
+img{max-width:100%;display:block;margin:14px 0}
+.kpis{display:flex;flex-wrap:wrap;gap:12px}
+.kpi{flex:1 1 150px;background:#f6f7f9;border-radius:8px;padding:12px 14px}
+.kpi span{display:block;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.4px}
+.kpi strong{font-size:20px}
+table.tbl{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+.tbl th,.tbl td{padding:6px 10px;border-bottom:1px solid #eceef1;text-align:right}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl thead th{background:#f6f7f9;position:sticky;top:0}
+.tblwrap,section{overflow-x:auto}
+.note{color:#6b7280;font-style:italic}
+code{background:#f0f1f3;padding:1px 5px;border-radius:4px;font-size:13px}
+.roles{font-size:13px;color:#4c5257}
+"""
+
+
+def build_report(df, roles, log, dropped, src, top):
+    sections = [
+        ("Overview", s_overview(df, roles)),
+        ("Data quality &amp; cleaning", s_quality(df, roles, log, dropped)),
+        ("Trends over time", s_trends(df, roles)),
+        ("Category breakdowns", s_breakdowns(df, roles, top)),
+        ("Outcome / fulfilment effectiveness", s_outcomes(df, roles, top)),
+        ("Geography &amp; high-cardinality dimensions", s_geography(df, roles, top)),
+        ("Segmentation by value", s_segments(df, roles, top)),
+        ("Numeric summary", s_numerics(df)),
+    ]
+    detected = ", ".join(f"{k}=<b>{html.escape(str(v))}</b>"
+                         for k, v in roles.items() if v and not isinstance(v, list))
+    dims = ", ".join(map(html.escape, roles["dims"])) or "none"
+    geo = ", ".join(map(html.escape, roles["geo_dims"])) or "none"
+    body = "".join(f"<section><h2>{t}</h2>{c}</section>" for t, c in sections)
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<title>Analysis — {html.escape(src)}</title><style>{CSS}</style></head><body><div class="wrap">
+<h1>Data analysis report</h1>
+<p class="sub">{html.escape(src)} · {len(df):,} rows × {df.shape[1]} columns ·
+generated {datetime.now():%d %b %Y %H:%M}</p>
+<section><h2>Detected column roles</h2>
+<p class="roles">{detected}<br>dimensions: {dims}<br>high-cardinality: {geo}</p>
+<p class="note">Override any of these with --date-col / --value-col / --qty-col / --id-col /
+--status-col / --exclude.</p></section>
+{body}</div></body></html>"""
+
+
+def run(path, out, top=TOP_N, **ov):
+    df, dropped = load(path)
+    roles = detect(df, ov)
+    df, log = clean(df, roles)
+    print("detected:", {k: v for k, v in roles.items() if v})
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(build_report(df, roles, log, dropped, path, top))
+    print(f"wrote {out}")
+    return roles
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("csv")
+    p.add_argument("-o", "--out", default="report.html")
+    p.add_argument("--top", type=int, default=TOP_N, help="rows per top-N table")
+    for r in ("date", "value", "qty", "id", "status"):
+        p.add_argument(f"--{r}-col", dest=r, help=f"force the {r} column")
+    p.add_argument("--exclude", nargs="*", default=[], help="columns to ignore")
+    a = p.parse_args()
+    run(a.csv, a.out, a.top, date=a.date, value=a.value, qty=a.qty,
+        id=a.id, status=a.status, exclude=a.exclude)
+
+
+if __name__ == "__main__":
+    main()
