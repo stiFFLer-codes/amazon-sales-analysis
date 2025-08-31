@@ -107,7 +107,8 @@ test_analyze.py      its tests
 requirements.txt     pandas, matplotlib
 INSIGHTS.md          findings and recommendations
 report.html          generated output
-docs/                the assignment brief
+docs/                assignment brief and completion certificate
+LICENSE              MIT
 Amazon Sale Report.csv
 ```
 
@@ -123,3 +124,13 @@ An earlier version of this project split the work across `Data_Analysis.py` and 
   counts line items, of which there are 8,747 more than there are orders.
 
 The old files remain in the git history if you need them.
+
+## Assignment documents
+
+The original brief is at [`docs/brief-78G0OL.pdf`](docs/brief-78G0OL.pdf). The internship was
+completed with InnoByte Services; the certificate is at
+[`docs/completion-certificate.pdf`](docs/completion-certificate.pdf).
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
