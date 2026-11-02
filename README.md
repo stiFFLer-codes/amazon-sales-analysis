@@ -89,6 +89,31 @@ The residue after normalisation is about 15 rows carrying genuine misspellings (
 `ORISSA`, `PB`) out of 128,976. Fuzzy matching them was not worth the risk of merging two real
 places by accident, so the tool leaves them and the write-up says so.
 
+## Data notes
+
+**Exact duplicate rows.** The report contains 959 rows that are exact copies of another row
+(every column except the index), across 891 groups touching 873 orders.
+
+The file has no SKU or ASIN column, so two identical units in one order look the same as an
+export duplicate. The evidence points both ways:
+
+- Towards export duplicates: cancelled lines are over-represented among the copies (28.8% of
+  copied rows against 14.2% of all rows), and so are zero-quantity lines (26.1% against 9.9%).
+  A cancelled line with no units, appearing twice, is hard to read as two purchases. In 689 of
+  the 873 orders, every line is part of a copy.
+- Towards real repeat units: the export normally puts each unit on its own line (only 387 of
+  128,976 lines carry more than one unit), and 9,935 lines share an order, category and size
+  with another line, of which only 1,850 are exact copies. Two of the same item bought together
+  would produce exactly this kind of row.
+
+**Decision:** the rows are kept, and all figures are reported as-is. Removing them would lower
+the totals by about 0.5 to 0.7 percent (line items 128,976 to 128,017; gross order value
+Rupees 78.59M to Rupees 78.18M). To reproduce:
+
+```bash
+python scripts/check_duplicates.py
+```
+
 ## Tests
 
 ```bash
@@ -103,6 +128,7 @@ the numeric column is absent.
 
 ```
 analyze.py           the tool
+scripts/             check_duplicates.py, the duplicate check in Data notes
 test_analyze.py      its tests
 requirements.txt     pandas, matplotlib
 INSIGHTS.md          findings and recommendations
